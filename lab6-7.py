@@ -893,7 +893,7 @@ class DeleteWithArrowsCommand(Command):
             self.canvas.main_window.update_size_spins()
             self.canvas.main_window.tree_view.refresh_tree()
 
-
+# Окно свойств
 class CommandManager:
     def __init__(self, max_history: int = 100):
         self.undo_stack = []
