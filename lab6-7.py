@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QRectF, QPointF, QSizeF, pyqtSignal, QObject
 from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QPolygonF, QKeyEvent, QMouseEvent, QPaintEvent, QAction
 
-
+# Дерево обьектов
 class Observer(ABC):
     @abstractmethod
     def update(self, event_type: str, data: Any = None) -> None:
