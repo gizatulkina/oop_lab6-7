@@ -61,6 +61,27 @@ class Shape:
 
     def copy(self):
         raise NotImplementedError
+    
+    def to_dict(self) -> Dict:
+        return {
+            'class': self.__class__.__name__,
+            'id': str(self.id),
+            'type': self.type.value,
+            'position_x': self.position.x(),
+            'position_y': self.position.y(),
+            'color_r': self.color.red(),
+            'color_g': self.color.green(),
+            'color_b': self.color.blue(),
+            'color_a': self.color.alpha(),
+            'size_w': self._size.width(),
+            'size_h': self._size.height(),
+        }
+
+    def from_dict(self, data: Dict) -> None:
+        self.id = str(data.get('id', str(uuid.uuid4())))
+        self.position = QPointF(data['position_x'], data['position_y'])
+        self.color = QColor(data['color_r'], data['color_g'], data['color_b'], data['color_a'])
+        self._size = QSizeF(data['size_w'], data['size_h'])
 
 
 class Circle(Shape):
@@ -342,6 +363,53 @@ class Group(Shape):
         for shape in self._shapes:
             self._relative_positions.append(shape.position - self.position)
 
+    def to_dict(self) -> Dict:
+        return {
+            'class': 'Group',
+            'id': str(self.id),
+            'position_x': self.position.x(),
+            'position_y': self.position.y(),
+            'size_w': self._size.width(),
+            'size_h': self._size.height(),
+            'shapes': [shape.to_dict() for shape in self._shapes]
+        }
+
+    def from_dict(self, data: Dict) -> None:
+        self.id = str(data.get('id', str(uuid.uuid4())))
+        self.position = QPointF(data['position_x'], data['position_y'])
+        self._size = QSizeF(data['size_w'], data['size_h'])
+        self._shapes.clear()
+        for shape_data in data.get('shapes', []):
+            shape = ShapeFactory.create_from_dict(shape_data)
+            if shape:
+                self._shapes.append(shape)
+        self._update_relative_positions()        
+
+class ShapeFactory:
+    _shape_classes = {
+        'Circle': Circle,
+        'Square': Square,
+        'Ellipse': Ellipse,
+        'Rectangle': Rectangle,
+        'Triangle': Triangle,
+        'Line': Line,
+        'Group': Group,
+    }
+
+    @classmethod
+    def create_from_dict(cls, data: Dict) -> Optional[Shape]:
+        class_name = data.get('class')
+        shape_class = cls._shape_classes.get(class_name)
+        if shape_class:
+            if class_name == 'Group':
+                shape = Group()
+                shape.from_dict(data)
+                return shape
+            else:
+                shape = shape_class(QPointF(0, 0))
+                shape.from_dict(data)
+                return shape
+        return None
 
 class MyStorage:
     def __init__(self, capacity: int = 1000):
@@ -389,6 +457,32 @@ class MyStorage:
             if self._array[i]:
                 yield self._array[i]
 
+    def save_to_file(self, filename: str) -> bool:
+        try:
+            data = {'objects': []}
+            for obj in self.get_all_objects():
+                data['objects'].append(obj.to_dict())
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            return True
+        except Exception as e:
+            print(f"Ошибка сохранения: {e}")
+            return False
+
+    def load_from_file(self, filename: str) -> bool:
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            self._array = [None] * self._capacity
+            self._count = 0
+            for obj_data in data.get('objects', []):
+                shape = ShapeFactory.create_from_dict(obj_data)
+                if shape:
+                    self.add(shape)
+            return True
+        except Exception as e:
+            print(f"Ошибка загрузки: {e}")
+            return False
 
 class Canvas(QWidget):
     selection_changed = pyqtSignal()
@@ -617,6 +711,35 @@ class MainWindow(QMainWindow):
         toolbar.addAction(ungroup_action)
 
         self.statusBar().showMessage("Готов")
+        toolbar.addSeparator()
+        save_action = QAction("Сохранить", self)
+        save_action.triggered.connect(self.save_to_file)
+        toolbar.addAction(save_action)
+
+        load_action = QAction("Загрузить", self)
+        load_action.triggered.connect(self.load_from_file)
+        toolbar.addAction(load_action)
+
+
+# Добавить методы в MainWindow:
+    def save_to_file(self):
+        from PyQt6.QtWidgets import QFileDialog
+        filename, _ = QFileDialog.getSaveFileName(self, "Сохранить проект", "", "JSON Files (*.json)")
+        if filename:
+            if self.canvas.shapes.save_to_file(filename):
+                self.show_status(f"Сохранено в {filename}")
+            else:
+                QMessageBox.warning(self, "Ошибка", "Не удалось сохранить")
+
+    def load_from_file(self):
+        from PyQt6.QtWidgets import QFileDialog
+        filename, _ = QFileDialog.getOpenFileName(self, "Загрузить проект", "", "JSON Files (*.json)")
+        if filename:
+            if self.canvas.shapes.load_from_file(filename):
+                self.canvas.update()
+                self.show_status(f"Загружено из {filename}")
+            else:
+                QMessageBox.warning(self, "Ошибка", "Не удалось загрузить")
 
     def change_color(self):
         selected = self.canvas.get_selected_shapes()
